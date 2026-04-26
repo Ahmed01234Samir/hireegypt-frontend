@@ -20,18 +20,22 @@ type FormData = z.infer<typeof schema>;
 export default function RegisterPage() {
     const { register: registerAuth } = useAuth();
     const [loading, setLoading] = useState(false);
+    const [selectedRole, setSelectedRole] = useState<"SEEKER" | "EMPLOYER">("SEEKER");
 
     const {
         register,
         handleSubmit,
-        watch,
+        setValue,
         formState: { errors },
     } = useForm<FormData>({
         resolver: zodResolver(schema),
         defaultValues: { role: "SEEKER" },
     });
 
-    const selectedRole = watch("role");
+    function handleRoleSelect(role: "SEEKER" | "EMPLOYER") {
+        setSelectedRole(role);
+        setValue("role", role);
+    }
 
     async function onSubmit(data: FormData) {
         try {
@@ -61,7 +65,7 @@ export default function RegisterPage() {
                     <div className="flex bg-gray-100 rounded-lg p-1">
                         <button
                             type="button"
-                            onClick={() => register("role").onChange({ target: { value: "SEEKER" } })}
+                            onClick={() => handleRoleSelect("SEEKER")}
                             className={`flex-1 py-2 rounded-md text-sm font-medium transition ${
                                 selectedRole === "SEEKER"
                                     ? "bg-white shadow text-brand-600"
@@ -72,7 +76,7 @@ export default function RegisterPage() {
                         </button>
                         <button
                             type="button"
-                            onClick={() => register("role").onChange({ target: { value: "EMPLOYER" } })}
+                            onClick={() => handleRoleSelect("EMPLOYER")}
                             className={`flex-1 py-2 rounded-md text-sm font-medium transition ${
                                 selectedRole === "EMPLOYER"
                                     ? "bg-white shadow text-brand-600"
@@ -82,9 +86,6 @@ export default function RegisterPage() {
                             Employer
                         </button>
                     </div>
-
-                    {/* Hidden role field */}
-                    <input type="hidden" {...register("role")} />
 
                     {/* Name */}
                     <div>
