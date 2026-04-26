@@ -1,8 +1,9 @@
 "use client";
 
-import { use } from "react";
+import { use, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { jobsService } from "@/services/jobs.service";
+import { applicationsService } from "@/services/applications.service";
 import { formatSalary, timeAgo } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
 import { useRouter } from "next/navigation";
@@ -15,21 +16,44 @@ export default function JobDetailPage({
     params: Promise<{ slug: string }>;
 }) {
     const { slug } = use(params);
-    const { isAuthenticated } = useAuth();
+    const { isAuthenticated, user } = useAuth();
     const router = useRouter();
+    const [showApplyModal, setShowApplyModal] = useState(false);
+    const [coverLetter, setCoverLetter] = useState("");
+    const [applying, setApplying] = useState(false);
 
     const { data, isLoading } = useQuery({
         queryKey: ["job", slug],
         queryFn: () => jobsService.getJob(slug),
     });
 
-    function handleApply() {
+    const { data: hasApplied, refetch: refetchApplied } = useQuery({
+        queryKey: ["has-applied", data?.id],
+        queryFn: () => applicationsService.checkApplied(data!.id),
+        enabled: !!data?.id && isAuthenticated,
+    });
+
+    async function handleApply() {
         if (!isAuthenticated) {
             toast.error("Please sign in to apply");
             router.push("/login");
             return;
         }
-        toast.success("Apply feature coming soon!");
+        setShowApplyModal(true);
+    }
+
+    async function submitApplication() {
+        try {
+            setApplying(true);
+            await applicationsService.apply(data!.id, { coverLetter });
+            toast.success("Application submitted successfully! 🎉");
+            setShowApplyModal(false);
+            refetchApplied();
+        } catch (err: any) {
+            toast.error(err?.response?.data?.error || "Failed to apply");
+        } finally {
+            setApplying(false);
+        }
     }
 
     if (isLoading) {
@@ -74,30 +98,20 @@ export default function JobDetailPage({
             </nav>
 
             <div className="max-w-5xl mx-auto px-4 py-8">
-                {/* Back */}
-                <Link
-                    href="/jobs"
-                    className="text-brand-600 text-sm hover:underline mb-6 inline-block"
-                >
+                <Link href="/jobs" className="text-brand-600 text-sm hover:underline mb-6 inline-block">
                     ← Back to Jobs
                 </Link>
 
                 <div className="flex flex-col md:flex-row gap-6">
-
                     {/* Main Content */}
                     <div className="flex-1">
                         <div className="bg-white rounded-xl p-8 shadow-sm border border-gray-100 mb-6">
-
                             {/* Header */}
                             <div className="flex items-start justify-between gap-4 mb-6">
                                 <div>
-                                    <h1 className="text-2xl font-bold text-gray-900 mb-1">
-                                        {data.title}
-                                    </h1>
+                                    <h1 className="text-2xl font-bold text-gray-900 mb-1">{data.title}</h1>
                                     <div className="flex items-center gap-2">
-                    <span className="text-brand-600 font-medium">
-                      {data.company.name}
-                    </span>
+                                        <span className="text-brand-600 font-medium">{data.company.name}</span>
                                         {data.company.isVerified && (
                                             <span className="bg-blue-100 text-blue-600 text-xs px-2 py-0.5 rounded-full">
                         ✓ Verified
@@ -105,12 +119,18 @@ export default function JobDetailPage({
                                         )}
                                     </div>
                                 </div>
-                                <button
-                                    onClick={handleApply}
-                                    className="bg-brand-600 text-white px-6 py-3 rounded-lg font-semibold hover:bg-brand-700 transition shrink-0"
-                                >
-                                    Apply Now
-                                </button>
+                                {hasApplied ? (
+                                    <span className="bg-green-100 text-green-700 px-5 py-3 rounded-lg font-semibold text-sm">
+                    ✓ Applied
+                  </span>
+                                ) : (
+                                    <button
+                                        onClick={handleApply}
+                                        className="bg-brand-600 text-white px-6 py-3 rounded-lg font-semibold hover:bg-brand-700 transition shrink-0"
+                                    >
+                                        Apply Now
+                                    </button>
+                                )}
                             </div>
 
                             {/* Badges */}
@@ -156,55 +176,46 @@ export default function JobDetailPage({
 
                             {/* Description */}
                             <div className="mb-6">
-                                <h3 className="font-semibold text-gray-800 mb-3 text-lg">
-                                    Job Description
-                                </h3>
-                                <p className="text-gray-600 leading-relaxed whitespace-pre-line">
-                                    {data.description}
-                                </p>
+                                <h3 className="font-semibold text-gray-800 mb-3 text-lg">Job Description</h3>
+                                <p className="text-gray-600 leading-relaxed whitespace-pre-line">{data.description}</p>
                             </div>
 
-                            {/* Requirements */}
                             {data.requirements && (
                                 <div className="mb-6">
-                                    <h3 className="font-semibold text-gray-800 mb-3 text-lg">
-                                        Requirements
-                                    </h3>
-                                    <p className="text-gray-600 leading-relaxed whitespace-pre-line">
-                                        {data.requirements}
-                                    </p>
+                                    <h3 className="font-semibold text-gray-800 mb-3 text-lg">Requirements</h3>
+                                    <p className="text-gray-600 leading-relaxed whitespace-pre-line">{data.requirements}</p>
                                 </div>
                             )}
 
-                            {/* Benefits */}
                             {data.benefits && (
                                 <div className="mb-6">
-                                    <h3 className="font-semibold text-gray-800 mb-3 text-lg">
-                                        Benefits
-                                    </h3>
-                                    <p className="text-gray-600 leading-relaxed whitespace-pre-line">
-                                        {data.benefits}
-                                    </p>
+                                    <h3 className="font-semibold text-gray-800 mb-3 text-lg">Benefits</h3>
+                                    <p className="text-gray-600 leading-relaxed whitespace-pre-line">{data.benefits}</p>
                                 </div>
                             )}
 
-                            {/* Apply Button Bottom */}
+                            {/* Apply Bottom */}
                             <div className="pt-4 border-t border-gray-100">
-                                <button
-                                    onClick={handleApply}
-                                    className="w-full bg-brand-600 text-white py-3 rounded-lg font-semibold hover:bg-brand-700 transition"
-                                >
-                                    Apply for this Position
-                                </button>
+                                {hasApplied ? (
+                                    <div className="w-full bg-green-50 text-green-700 py-3 rounded-lg font-semibold text-center">
+                                        ✓ You have already applied for this position
+                                    </div>
+                                ) : (
+                                    <button
+                                        onClick={handleApply}
+                                        className="w-full bg-brand-600 text-white py-3 rounded-lg font-semibold hover:bg-brand-700 transition"
+                                    >
+                                        Apply for this Position
+                                    </button>
+                                )}
                             </div>
                         </div>
                     </div>
 
-                    {/* Sidebar — Company Info */}
+                    {/* Sidebar */}
                     <div className="w-full md:w-72 shrink-0">
                         <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-100 sticky top-24">
                             <h3 className="font-semibold text-gray-800 mb-4">About the Company</h3>
-
                             <div className="flex items-center gap-3 mb-4">
                                 <div className="w-12 h-12 bg-brand-100 rounded-xl flex items-center justify-center text-brand-600 font-bold text-lg">
                                     {data.company.name.charAt(0)}
@@ -214,37 +225,73 @@ export default function JobDetailPage({
                                     <p className="text-sm text-gray-500">{data.company.industry}</p>
                                 </div>
                             </div>
-
                             {data.company.location && (
                                 <div className="flex items-center gap-2 text-sm text-gray-600 mb-2">
-                                    <span>📍</span>
-                                    <span>{data.company.location}</span>
+                                    <span>📍</span><span>{data.company.location}</span>
                                 </div>
                             )}
-
-                            {data.company.size && (
-                                <div className="flex items-center gap-2 text-sm text-gray-600 mb-2">
-                                    <span>👥</span>
-                                    <span>{data.company.size} employees</span>
-                                </div>
-                            )}
-
                             {data.company.isVerified && (
                                 <div className="mt-4 bg-blue-50 text-blue-600 text-sm px-3 py-2 rounded-lg text-center">
                                     ✓ Verified Company
                                 </div>
                             )}
-
-                            <button
-                                onClick={handleApply}
-                                className="w-full mt-4 bg-brand-600 text-white py-2.5 rounded-lg font-medium hover:bg-brand-700 transition text-sm"
-                            >
-                                Apply Now
-                            </button>
+                            {!hasApplied && (
+                                <button
+                                    onClick={handleApply}
+                                    className="w-full mt-4 bg-brand-600 text-white py-2.5 rounded-lg font-medium hover:bg-brand-700 transition text-sm"
+                                >
+                                    Apply Now
+                                </button>
+                            )}
                         </div>
                     </div>
                 </div>
             </div>
+
+            {/* Apply Modal */}
+            {showApplyModal && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+                    <div className="bg-white rounded-2xl p-8 w-full max-w-lg shadow-2xl">
+                        <h2 className="text-xl font-bold text-gray-900 mb-1">Apply for {data.title}</h2>
+                        <p className="text-gray-500 text-sm mb-6">{data.company.name}</p>
+
+                        <div className="mb-5">
+                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                                Cover Letter <span className="text-gray-400">(optional)</span>
+                            </label>
+                            <textarea
+                                value={coverLetter}
+                                onChange={(e) => setCoverLetter(e.target.value)}
+                                rows={5}
+                                placeholder="Tell the employer why you're a great fit for this role..."
+                                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 resize-none"
+                            />
+                        </div>
+
+                        <div className="bg-brand-50 rounded-lg p-4 mb-6">
+                            <p className="text-sm text-brand-700">
+                                📄 Your profile CV will be attached automatically. Make sure your profile is up to date.
+                            </p>
+                        </div>
+
+                        <div className="flex gap-3">
+                            <button
+                                onClick={submitApplication}
+                                disabled={applying}
+                                className="flex-1 bg-brand-600 text-white py-3 rounded-lg font-semibold hover:bg-brand-700 transition disabled:opacity-50"
+                            >
+                                {applying ? "Submitting..." : "Submit Application"}
+                            </button>
+                            <button
+                                onClick={() => setShowApplyModal(false)}
+                                className="px-6 py-3 border border-gray-300 text-gray-600 rounded-lg hover:bg-gray-50 transition"
+                            >
+                                Cancel
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
